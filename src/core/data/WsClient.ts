@@ -44,6 +44,13 @@ function normalizePluginId(id: string): string {
   return id.replace(/_/g, "-");
 }
 
+/** Returns fetchedAt when the payload is a SnapshotEnvelope, else undefined. */
+function extractEnvelopeFetchedAt(payload: WsStreamPayload["payload"]): string | undefined {
+  if (Array.isArray(payload) || payload === undefined) return undefined;
+  const fetchedAt = (payload as { fetchedAt?: unknown }).fetchedAt;
+  return typeof fetchedAt === "string" ? fetchedAt : undefined;
+}
+
 class WebSocketClient {
   private engines = new Map<string, EngineConnection>();
 
@@ -140,7 +147,17 @@ class WebSocketClient {
 
         if (data.type === "data" && data.pluginId && data.payload) {
           this.handleDataMessage(data as WsStreamPayload);
+          return;
         }
+
+        if (data.type === "status" && data.pluginId) {
+          this.handleStatusMessage(data);
+          return;
+        }
+
+        // Unknown frame types are intentionally ignored — the engine contract
+        // is additive, so new frame types must never break the client.
+        console.debug(`[WSClient] Ignoring unknown frame type: ${data.type}`);
       } catch (err) {
         console.error("[WSClient] Error parsing message:", err);
       }
@@ -182,6 +199,14 @@ class WebSocketClient {
     let finalEntities = data.payload as GeoEntity[];
     const existingEntities = useStore.getState().entitiesByPlugin[pluginId] || [];
 
+    // The engine broadcasts a SnapshotEnvelope whose fetchedAt is the server-clock
+    // moment the data was fetched. Record it for freshness display before any
+    // plugin-specific mapping consumes the envelope.
+    const envelopeFetchedAt = extractEnvelopeFetchedAt(data.payload);
+    if (envelopeFetchedAt !== undefined) {
+      useStore.getState().setLayerFetchedAt(pluginId, envelopeFetchedAt);
+    }
+
     if (plugin && typeof (plugin as any).mapWebsocketPayload === "function") {
       finalEntities = (plugin as any).mapWebsocketPayload(data.payload, existingEntities);
     } else if (!Array.isArray(data.payload)) {
@@ -200,6 +225,24 @@ class WebSocketClient {
       pluginId,
       entities: finalEntities,
     });
+  }
+
+  private handleStatusMessage(data: {
+    pluginId?: unknown;
+    status?: unknown;
+    lastGood?: unknown;
+    health?: unknown;
+  }) {
+    const pluginId = normalizePluginId(String(data.pluginId));
+
+    // The status frame is a live delta: merge the broadcast fields into the
+    // store's existing entry. `health` carries the seeder-health payload;
+    // `status`/`lastGood` are top-level stream metadata and currently unused
+    // by the badge (which derives from SeederHealth only).
+    if (data.health !== undefined) {
+      const { updateSeederHealth } = useStore.getState();
+      updateSeederHealth(pluginId, data.health as Record<string, unknown>);
+    }
   }
 
   private send(engine: EngineConnection, msg: any) {

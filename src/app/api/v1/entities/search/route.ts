@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/ba-session";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { searchEntities } from "@/lib/data-query/service";
-import { resolveEdition } from "@/core/edition";
+import { resolveEdition as getEdition } from "@/core/edition";
 
 export async function GET(request: NextRequest) {
-    const currentEdition = resolveEdition(process.env.NEXT_PUBLIC_WWV_EDITION);
+    const currentEdition = getEdition();
     if (currentEdition === "demo") {
         return NextResponse.json({ error: "Demo mode" }, { status: 403 });
     }

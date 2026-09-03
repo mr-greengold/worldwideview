@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { isDemo } from "@/core/edition";
+import { isDemo, getEdition } from "@/core/edition";
 import { hasBetterAuthCookie } from "@/lib/proxy-auth";
 
 const HUB_REDIRECT_URL = process.env.NEXT_PUBLIC_HUB_REDIRECT_URL ?? "https://worldwideview.dev/hub"
@@ -100,7 +100,7 @@ export default async function proxy(req: NextRequest) {
     // Extract subdomain if on cloud
     const hostname = req.headers.get("host") || "";
     let tenantSubdomain = null;
-    const isCloudDeploy = process.env.NEXT_PUBLIC_WWV_EDITION === "cloud";
+    const isCloudDeploy = getEdition() === "cloud";
 
     if (isCloudDeploy) {
         const isApp = hostname.includes(TENANT_DOMAIN) || hostname.includes(".localhost");

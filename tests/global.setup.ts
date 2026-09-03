@@ -68,8 +68,20 @@ async function globalSetup(config: FullConfig) {
     // 2.5 Defensive Cleanup for Mock Plugin
     console.log(`[Setup] Cleaning up any existing mock plugins...`);
     await prisma.installedPlugin.deleteMany({
-        where: { pluginId: { in: ['e2e-mock-plugin', 'e2e-mock-bottom-panel'] } }
+        where: { pluginId: { in: ['e2e-mock-plugin', 'e2e-mock-bottom-panel', 'e2e-alert-mock'] } }
     });
+
+    // 2.6 Stage the alert mock's local-registry manifest. The alerts API
+    // validates rule pluginIds against the local registry, which scans
+    // public/plugins-local at runtime. The fixtures live in tests/fixtures
+    // (public/plugins-local is gitignored), so copy them into place here.
+    const stagingSrc = path.join(process.cwd(), 'tests', 'fixtures', 'plugins-local');
+    const stagingDest = path.join(process.cwd(), 'public', 'plugins-local');
+    fs.mkdirSync(path.join(stagingDest, 'e2e-alert-mock'), { recursive: true });
+    for (const file of fs.readdirSync(path.join(stagingSrc, 'e2e-alert-mock'))) {
+      fs.copyFileSync(path.join(stagingSrc, 'e2e-alert-mock', file), path.join(stagingDest, 'e2e-alert-mock', file));
+    }
+    console.log(`[Setup] Staged local-registry manifest for e2e-alert-mock.`);
 
     // 3. Clean up any orphaned user and create the test user
     console.log(`[Setup] Upserting test user: ${TEST_USER_EMAIL}`);
@@ -124,6 +136,17 @@ async function globalSetup(config: FullConfig) {
         pluginId: 'e2e-mock-bottom-panel',
         version: '1.0.0',
         config: bottomManifestStr,
+        enabled: true
+      }
+    });
+
+    const alertMockManifestPath = path.join(process.cwd(), 'public', 'e2e-fixtures', 'alert-mock-manifest.json');
+    const alertMockManifestStr = fs.readFileSync(alertMockManifestPath, 'utf-8');
+    await prisma.installedPlugin.create({
+      data: {
+        pluginId: 'e2e-alert-mock',
+        version: '1.0.0',
+        config: alertMockManifestStr,
         enabled: true
       }
     });
@@ -188,9 +211,33 @@ async function globalSetup(config: FullConfig) {
       throw new Error('No cookies returned from sign-in API - auth may have failed silently');
     }
 
+    // 4.5 Warm up the dev server routes so the first test doesn't pay Next.js
+    // cold-compile costs inside the layer-item timeout. Observed: on a cold
+    // server, the first page hits compile /api/marketplace/load on demand and
+    // the marketplace sync fetch is still pending when the 10s layer-item
+    // timeout expires, leaving the layer list empty (bottom-panel flake).
+    try {
+      await fetch(baseURL + '/');
+      const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+      await fetch(baseURL + '/api/marketplace/load', { headers: { Cookie: cookieHeader } });
+      console.log('[Setup] Dev server routes warmed.');
+    } catch (warmErr) {
+      console.warn(`[Setup] Warm-up fetch failed (continuing): ${warmErr instanceof Error ? warmErr.message : String(warmErr)}`);
+    }
+
     // 5. Save storage state with real session cookie from the API response
     if (typeof storageState === 'string') {
-      fs.writeFileSync(storageState, JSON.stringify({ cookies, origins: [] }, null, 2));
+      // Pre-approve the E2E mock plugins so the unverified-plugin gate in
+      // useMarketplaceSync doesn't hold them behind the approval dialog.
+      // trustedPlugins.getApprovedUnverifiedIds() does JSON.parse(raw), so the
+      // value must be a JSON array string of plugin IDs.
+      const approvedMockPlugins = JSON.stringify(['e2e-mock-plugin', 'e2e-mock-bottom-panel', 'e2e-alert-mock']);
+      const origin = new URL(baseURL).origin;
+      const origins = [{
+        origin,
+        localStorage: [{ name: 'wwv_approved_unverified_plugins', value: approvedMockPlugins }],
+      }];
+      fs.writeFileSync(storageState, JSON.stringify({ cookies, origins }, null, 2));
       console.log(`[Setup] Storage state saved with ${cookies.length} cookies.`);
     } else {
       console.warn("Storage state path is not a string, skipping saving context.");

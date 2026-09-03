@@ -1,11 +1,19 @@
 /**
  * Edition detection module.
  *
- * Reads NEXT_PUBLIC_WWV_EDITION from the environment and exposes
- * typed constants + feature-flag helpers for the rest of the codebase.
+ * The edition is resolved from the environment at RUNTIME on the server,
+ * so self-hosters can pull the prebuilt image and switch editions via a
+ * runtime .env without rebuilding.
  *
- * Use the NEXT_PUBLIC_ prefix so the value is available on both
- * server and client (Next.js inlines it at build time).
+ * Precedence (server-side, evaluated at request/module-load time):
+ *   1. WWV_EDITION            — runtime env var (settable in a runtime .env)
+ *   2. NEXT_PUBLIC_WWV_EDITION — build-time baked value (kept for the
+ *                                docker-publish :latest/:cloud/:demo builds)
+ *   3. "local"                — fallback when both are unset/invalid
+ *
+ * Client bundles still receive the NEXT_PUBLIC_ build-time bake; server
+ * code should prefer `getEdition()` / `resolveServerEdition()` so runtime
+ * overrides apply.
  */
 
 // ---------------------------------------------------------------------------
@@ -30,10 +38,33 @@ export function resolveEdition(raw?: string): Edition {
     return "local";
 }
 
+/**
+ * Server-side runtime edition resolution.
+ *
+ * Reads `WWV_EDITION` first (runtime, settable via a runtime .env on the
+ * prebuilt image), then falls back to the build-time baked
+ * `NEXT_PUBLIC_WWV_EDITION`. Never inlined into client bundles — call this
+ * only from server code (route handlers, middleware, instrumentation).
+ */
+export function resolveServerEdition(): Edition {
+    const runtime = process.env.WWV_EDITION;
+    if (runtime !== undefined && runtime.trim() !== "") {
+        return resolveEdition(runtime);
+    }
+    return resolveEdition(process.env.NEXT_PUBLIC_WWV_EDITION);
+}
+
 /** Current deployment edition — determined once at module load. */
-export const edition: Edition = resolveEdition(
-    process.env.NEXT_PUBLIC_WWV_EDITION,
-);
+export const edition: Edition = resolveServerEdition();
+
+/**
+ * Fresh edition lookup for request-scoped server code.
+ * Unlike the module-load `edition` constant, this re-reads the env on every
+ * call, so tests (vi.stubEnv) and runtime .env overrides apply immediately.
+ */
+export function getEdition(): Edition {
+    return resolveServerEdition();
+}
 
 // ---------------------------------------------------------------------------
 // Boolean helpers

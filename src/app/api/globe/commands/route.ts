@@ -18,7 +18,7 @@ import { getServerSession } from "@/lib/ba-session";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { drainGlobeCommands } from "@/lib/globeCommandQueue";
 import { globeCommandsLimiter, getClientIp } from "@/lib/rateLimiters";
-import { resolveEdition } from "@/core/edition";
+import { getEdition } from "@/core/edition";
 
 const SESSION_ID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -26,7 +26,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const limited = globeCommandsLimiter.check(getClientIp(request));
     if (limited) return limited as NextResponse;
 
-    const currentEdition = resolveEdition(process.env.NEXT_PUBLIC_WWV_EDITION);
+    const currentEdition = getEdition();
     if (currentEdition === "demo") {
         return NextResponse.json({ error: "Demo mode" }, { status: 403 });
     }

@@ -25,6 +25,10 @@ on:
         type: string
         default: 'linux/amd64'
         description: 'Comma-separated build platforms. Default amd64-only; only the public globe app should pass linux/amd64,linux/arm64.'
+      ref:
+        type: string
+        default: ''
+        description: 'Git ref to check out (e.g. refs/pull/123/merge). Defaults to the triggering ref.'
 
 jobs:
   build:
@@ -37,6 +41,12 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          # Untrusted-content trigger (issue_comment -> PR merge ref): never
+          # persist the GITHUB_TOKEN into the checkout, so checked-out code
+          # cannot exfiltrate it (CodeQL privileged-workflow hardening).
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -58,6 +68,11 @@ jobs:
       - name: Build and push
         id: build-and-push
         uses: docker/build-push-action@v7
+        env:
+          NEXT_PUBLIC_CESIUM_ION_TOKEN: ${{ secrets.NEXT_PUBLIC_CESIUM_ION_TOKEN }}
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          NEXT_PUBLIC_BING_MAPS_KEY: ${{ secrets.NEXT_PUBLIC_BING_MAPS_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         with:
           context: .
           push: true
@@ -66,10 +81,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             ${{ inputs.build-args }}
-            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_CESIUM_ION_TOKEN={0}', secrets.NEXT_PUBLIC_CESIUM_ION_TOKEN) || '' }}
-            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY={0}', secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) || '' }}
-            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_BING_MAPS_KEY={0}', secrets.NEXT_PUBLIC_BING_MAPS_KEY) || '' }}
-            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_SUPABASE_ANON_KEY={0}', secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY) || '' }}
+            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_CESIUM_ION_TOKEN={0}', env.NEXT_PUBLIC_CESIUM_ION_TOKEN) || '' }}
+            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY={0}', env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) || '' }}
+            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_BING_MAPS_KEY={0}', env.NEXT_PUBLIC_BING_MAPS_KEY) || '' }}
+            ${{ inputs.include-preview-secrets && format('NEXT_PUBLIC_SUPABASE_ANON_KEY={0}', env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

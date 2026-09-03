@@ -22,7 +22,7 @@ import { getServerSession } from "@/lib/ba-session";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { drainGlobeCommands } from "@/lib/globeCommandQueue";
 import { globeCommandsStreamLimiter, getClientIp } from "@/lib/rateLimiters";
-import { resolveEdition } from "@/core/edition";
+import { getEdition } from "@/core/edition";
 
 const SESSION_ID_RE = /^[0-9a-f-]{36}$/i;
 const POLL_INTERVAL_MS = 200;
@@ -46,7 +46,7 @@ export async function GET(request: Request): Promise<Response> {
     if (limited) return limited as Response;
 
     // Gate 2: demo edition -- read env at request time so vi.stubEnv works in tests
-    const currentEdition = resolveEdition(process.env.NEXT_PUBLIC_WWV_EDITION);
+    const currentEdition = getEdition();
     if (currentEdition === "demo") {
         return NextResponse.json({ error: "Demo mode" }, { status: 403 }) as Response;
     }
