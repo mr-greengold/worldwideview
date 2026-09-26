@@ -20,6 +20,19 @@ const WORKFLOW_FILE = /(^|\/)\.github\/workflows\//;
 const NPM_FILE = /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$/;
 const DOCKER_FILE = /(^|\/)(Dockerfile[^\/]*|docker-compose[^\/]*\.ya?ml)$/;
 
+/**
+ * The Dependabot App's own identity, matched exactly rather than by substring. A substring test
+ * also accepts any account or GitHub App that merely contains the word - dependabot-fan,
+ * dependabot-helper[bot] - and this script's whole trust boundary rests on the author being
+ * GitHub's Dependabot. The REST API reports an App-authored pull request as "app/dependabot",
+ * while other surfaces use "dependabot[bot]", so both are accepted and nothing else is.
+ */
+const DEPENDABOT_AUTHORS = new Set(["app/dependabot", "dependabot[bot]"]);
+
+/** The name of this workflow's own job, which must be ignored when judging a pull request. */
+const SELF_CHECK_NAME = "automerge";
+const isDependabot = (login) => DEPENDABOT_AUTHORS.has(login ?? "");
+
 /** Classify one from/to pair. Returns "major" | "minor" | "patch" | "unknown". */
 export function classifyBump(from, to) {
   const nums = (value) => {
@@ -105,11 +118,13 @@ export function decide({ body, files = [] }) {
  * required checks would have merged it.
  */
 export function gate(pr) {
-  if (!(pr.author?.login ?? "").includes("dependabot")) {
+  if (!isDependabot(pr.author?.login)) {
     return { action: "leave", reason: "not a Dependabot pull request" };
   }
   if (pr.isDraft) return { action: "wait", reason: "still a draft" };
-  const checks = pr.statusCheckRollup ?? [];
+  // This workflow's own job is part of the rollup and is still running while we decide, so counting
+  // it would mean always finding a pending check and never enabling anything. It judges the others.
+  const checks = (pr.statusCheckRollup ?? []).filter((c) => label(c) !== SELF_CHECK_NAME);
   const failing = checks.filter((c) => FAILING.has(state(c)));
   const pending = checks.filter((c) => ["", "PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "EXPECTED"].includes(state(c)));
   const autoOn = (pr.autoMergeRequest ?? null) !== null;
@@ -157,6 +172,9 @@ function selfTest() {
   const majorBody = "Bumps [@vitest/coverage-v8](https://x) from 4.1.10 to 5.0.1.";
   const gates = [
     ["gate: all green", { author: dep, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS"), ok("SKIPPED")] }, "enable"],
+    ["gate: own check still running", { author: dep, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS"), { name: "automerge", status: "IN_PROGRESS", conclusion: null }] }, "enable"],
+    ["gate: impostor author", { author: { login: "dependabot-fan" }, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS")] }, "leave"],
+    ["gate: impostor bot author", { author: { login: "dependabot-helper[bot]" }, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS")] }, "leave"],
     ["gate: non-required check failing", { author: dep, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS"), { name: "security/snyk", status: "COMPLETED", conclusion: "FAILURE" }] }, "leave"],
     ["gate: failing while auto-merge on", { author: dep, body: patchBody, files: ["package.json"], mergeable: "MERGEABLE", autoMergeRequest: { enabledAt: "x" }, statusCheckRollup: [{ name: "Playwright Tests", status: "COMPLETED", conclusion: "FAILURE" }] }, "withdraw"],
     ["gate: major", { author: dep, body: majorBody, files: ["package.json"], mergeable: "MERGEABLE", statusCheckRollup: [ok("SUCCESS")] }, "leave"],
@@ -189,7 +207,7 @@ const FAILING = new Set(["FAILURE", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE",
  */
 function digest() {
   const prs = gh(["pr", "list", "--state", "open", "--limit", "50", "--json", "number,title,body,files,mergeable,createdAt,statusCheckRollup,url,author"]);
-  const dep = prs.filter((p) => (p.author?.login ?? "").includes("dependabot"));
+  const dep = prs.filter((p) => isDependabot(p.author?.login));
   const now = Date.now();
   const attention = [];
   console.log("| PR | Age | Verdict | Mergeable | Checks |");
@@ -226,7 +244,7 @@ function digest() {
 
 function audit() {
   const prs = gh(["pr", "list", "--state", "open", "--limit", "50", "--json", "number,title,body,files,mergeable,author"]);
-  const dep = prs.filter((p) => (p.author?.login ?? "").includes("dependabot"));
+  const dep = prs.filter((p) => isDependabot(p.author?.login));
   let flagged = 0;
   for (const pr of dep) {
     const verdict = decide({ body: pr.body, files: pr.files ?? [] });
