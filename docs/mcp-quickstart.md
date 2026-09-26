@@ -1,11 +1,14 @@
 # MCP Quickstart: Connect an AI Agent to WorldWideView
 
 Connect Claude Desktop, Cursor, or any MCP-compatible client to your own WorldWideView
-globe. MCP is available in the **local (self-hosted) edition** that you run yourself.
+globe. MCP ships in every edition - the **local (self-hosted)** app you run yourself, and
+the **cloud** instance you sign in to.
 
-> Cloud edition (hosted at worldmonitor.app) is not yet available. When it launches, the
-> same steps apply but you will use your cloud account and the cloud endpoint instead of
-> localhost. See "Cloud edition (coming soon)" at the end.
+> **Your endpoint is your own origin.** In every edition the app derives the MCP URL from
+> the page you are on: `http://localhost:<port>/api/mcp` locally, and
+> `https://<your-instance>.cloud-wwv.dev/api/mcp` on a cloud instance. Nothing is baked
+> in, so the "Connect your agent" panel always shows your instance's real URL. See
+> "Cloud edition" at the end.
 
 ---
 
@@ -65,15 +68,16 @@ Use `pnpm dev:all` for the full MCP experience. The app comes up at
 3. Click **Generate new key**, give it a name, and **copy the key immediately** (it is shown
    only once). Your key looks like `wwv_abc123.<long-secret>`.
 
-The same panel ("Connect your agent") shows a ready-to-paste config block with your local
-endpoint already filled in (`http://localhost:3000/api/mcp`).
+The same panel ("Connect your agent") shows a ready-to-paste config block with your
+endpoint already filled in - the app derives it from the page origin (`http://localhost:3000/api/mcp`
+when you are on the local app).
 
 ---
 
 ## Step 4: Add the MCP server to your client
 
 Paste this into your client's MCP configuration (e.g. `claude_desktop_config.json` for
-Claude Desktop, or the Cursor MCP settings). The endpoint is your local app:
+Claude Desktop, or the Cursor MCP settings). The endpoint is your own app's origin plus `/api/mcp` (here, the local app):
 
 ```json
 {
@@ -111,6 +115,8 @@ required.
 ### Read / query tools (no open tab required)
 
 These run server-side and return data using only your API key. You do not need the globe open.
+The server registers **22 tools**; `tools/list` on a running instance is the authority, and the
+"Connect your agent" panel prints that same list from the server's own registry.
 
 | Tool | What it does |
 |---|---|
@@ -125,6 +131,10 @@ These run server-side and return data using only your API key. You do not need t
 | `update_favorite` | Rename or annotate a bookmark |
 | `remove_favorite` | Delete a bookmark |
 | `get_plugin_filters` | List filterable fields a plugin declares |
+| `find_nearby_entities` | Find entities within a radius of a point |
+| `get_regional_analytics` | Aggregate entity counts per plugin across a region |
+| `investigate_area` | Summarise what is live in an area, plugin by plugin |
+| `get_globe_context` | Report the globe's live state: camera, layers, filters, attached tabs |
 
 ### Command / control tools (open globe tab required)
 
@@ -147,13 +157,21 @@ Redis (run `pnpm dev:all`).
 
 ## Recommended agent prompt
 
-Paste this into your agent's system prompt to give it immediate context:
+The **"Connect your agent" panel generates this brief for you**: your own MCP endpoint, the
+tool list the server really registers, and a `mcpServers` config block with your key already in
+the Authorization header. Use its **Copy** button - one click, one paste into your harness -
+rather than writing a prompt by hand; a hand-written prompt drifts from the server's real tool
+surface, which is how the panel came to advertise a tool that did not exist.
+
+If you want a starting prompt of your own, keep the two facts an agent cannot guess:
 
 ```
 You have access to WorldWideView (WWV) via MCP -- a live 3D globe streaming real-world data
 (aviation, shipping, earthquakes, weather, and more). Use the MCP tools to query entities,
-move the camera, toggle layers, and filter data. Command tools require the user to have the
-WWV globe open in a browser tab. Read/query tools work without a browser tab.
+move the camera, toggle layers, and filter data. The endpoint and the API key are in your
+mcpServers config; the key goes in the Authorization header, never in the URL. Command tools
+require the user to have the WWV globe open in a browser tab. Read/query tools work without
+a browser tab.
 ```
 
 ---
@@ -184,18 +202,28 @@ quit-and-relaunch is required.
 
 ---
 
-## Cloud edition (coming soon)
+## Cloud edition
 
-A hosted cloud edition is planned at worldmonitor.app. It is **not yet available**. When it
-launches, the flow is the same as above except:
+Cloud instances run at **`https://<your-instance>.cloud-wwv.dev`** - one subdomain per
+tenant. The ecosystem hub and sign-in live at `https://worldwideview.dev`, and the public
+demo globe is at `https://demo.worldwideview.dev`.
 
-- You sign in to your cloud account at worldmonitor.app instead of running the app locally.
-- The MCP endpoint is `https://api.worldmonitor.app/api/mcp` instead of `http://localhost:3000/api/mcp`.
+The flow is the same as the local steps above, with two differences:
+
+- You sign in at your own instance (`https://<your-instance>.cloud-wwv.dev`) instead of
+  running the app locally. It is the same account identity you use across the ecosystem.
+- The MCP endpoint is **your instance's own origin plus `/api/mcp`**:
+  `https://<your-instance>.cloud-wwv.dev/api/mcp`. The app derives it from the page origin,
+  so the "Connect your agent" panel fills in the right URL for your instance - you never
+  paste a host by hand.
 - Infrastructure (Redis, the data engine, secrets) is operated for you, so there is no
   `pnpm setup` / `pnpm dev:all` step.
 
 Everything else - generating a key, the Authorization header, the two capability tiers, and
 the open-tab requirement for command tools - is identical.
+
+> Canonical domain map and probe evidence:
+> [ADR-0010](architecture/decisions/adr-0010-ecosystem-domain-map-and-tenant-endpoints.md).
 
 ---
 

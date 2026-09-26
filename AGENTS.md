@@ -2,7 +2,26 @@
 
 ## 1. Project Identity
 
-WorldWideView is a **real-time geospatial intelligence engine** visualizing live global data on an interactive 3D globe. Built with **Next.js 16**, **CesiumJS**, **React 19**, and **Zustand**. Design/feature target: `www.worldmonitor.app` ([reference repo](https://github.com/koala73/worldmonitor)).
+WorldWideView is a **real-time geospatial intelligence engine** visualizing live global data on an interactive 3D globe, and the **Globe App + Headless MCP Server** of the WorldWideView ecosystem. Built with **Next.js 16**, **CesiumJS**, **React 19**, and **Zustand**.
+
+**The design target is the WorldWideView ecosystem itself - not a third-party project.** This repository is the globe product: it streams live data onto the 3D globe and exposes the same data to AI agents over MCP at `/api/mcp`. It is one of several independent WorldWideView repositories (see the workspace-root `AGENTS.md` for the full ecosystem map).
+
+### Canonical hosts
+
+| Surface | Canonical host |
+|---|---|
+| Cloud globe instance | `https://<name>.cloud-wwv.dev` (per-tenant; the live entry today is `https://cloud-wwv.dev`) |
+| Cloud MCP endpoint | `https://<name>.cloud-wwv.dev/api/mcp` - the instance's own origin + `/api/mcp` |
+| Local / self-hosted | `http://localhost:<port>/api/mcp` - the page origin + `/api/mcp` |
+| Hub (landing + sign-in) | `https://worldwideview.dev` |
+| Public demo globe | `https://demo.worldwideview.dev` |
+| Plugin marketplace | `https://marketplace.worldwideview.dev` |
+| Data engine | `https://dataenginev2.worldwideview.dev` (serves `/api/<layer>`; its root is 404 by design) |
+
+> [!IMPORTANT]
+> **Never hardcode a host.** The app derives its own MCP endpoint from the page origin at runtime, so every cloud tenant advertises its own URL. No edition may fall back to a host this project does not own. `app.worldwideview.dev` is **not live** and must not be used, even as a placeholder.
+
+The verified domain map, probe evidence, and the history of the foreign domain that used to sit in the line above: [ADR-0010](docs/architecture/decisions/adr-0010-ecosystem-domain-map-and-tenant-endpoints.md).
 
 ---
 
@@ -83,7 +102,7 @@ pnpm db:reset     # Wipe + re-migrate DB (destructive)
 
 **Fresh worktree bootstrap**: a `git-wt` worktree starts with no `node_modules` and no env files. Run `pnpm install`, then copy `.env.local` from the main checkout (or a sibling worktree) if missing. `pnpm dev` auto-runs `prisma db push` + `copy-cesium` via `predev`. The main checkout is read-only and often stale: always read `origin/main` or work in a worktree.
 
-See [deployment and testing details in `.agents/rules/deployment-and-testing.md`] for Docker architecture, Coolify rules, and CSP headers.
+See [Deployment](docs/deployment.md) for the container and hosting model, and [Development](docs/development.md) for the local workflow, code style, and conventions.
 
 ---
 
@@ -95,13 +114,10 @@ These load automatically when you read/edit files matching their paths:
 |---|---|
 | `.agents/rules/cesium-rendering.md` | `src/core/globe/**`, `src/plugins/**`, `packages/wwv-plugin-*/src/**` |
 | `.agents/rules/state-management.md` | `src/core/state/**`, `src/components/**` |
-| `.agents/rules/plugin-architecture.md` | `src/core/plugins/**`, `packages/wwv-plugin-*/src/**`, `local-plugins/**` |
 | `.agents/rules/marketplace-architecture.md` | `src/lib/marketplace/**`, `src/app/api/marketplace/**` |
 | `.agents/rules/cloud-auth-architecture.md` | `src/lib/auth*`, `src/app/api/auth/**`, `src/core/auth.ts` |
 | `.agents/rules/database-migrations.md` | `prisma/**` |
-| `.agents/rules/monorepo-workflow.md` | `packages/**`, `pnpm-workspace.yaml`, `local-plugins/**` |
 | `.agents/rules/data-engine-architecture.md` | `packages/**`, `local-seeders/**`, `docker-compose.yml` |
-| `.agents/rules/deployment-and-testing.md` | `Dockerfile`, `docker-compose.yml`, `.github/**`, `next.config.ts` |
 | `.agents/rules/e2e-testing.md` | `tests/**`, `public/e2e-fixtures/**`, `playwright.config.ts` |
 | `.agents/rules/context-bloat-protection.md` | `*.txt`, `*.log`, `*.out`, `*.dump` |
 
@@ -118,7 +134,7 @@ The `.agents/context/` directory (agent guidance, environment notes, slash-comma
 | Command | Description |
 |---|---|
 | `/pr-review` | 6-role comprehensive pull request review (source: `.agents/skills/pr-review/SKILL.md`) |
-| `/branch-cleanup` | **Post-merge teardown**: commit leftovers, delete plan file, remove worktree via worktree-manager (source: `.agents/skills/branch-cleanup/SKILL.md`) |
+| `/branch-cleanup` | **Post-merge teardown**: commit leftovers, delete plan file, remove worktree via worktree-manager (internal skill, not shipped in this public repo) |
 | `/triage-issue` | Triage a single issue (plugin/feature/bug/question) per `TRIAGE.md`; confirm before any state change (source: `.agents/workflows/triage-issue.md`) |
 | `/commit`, `/remember`, `/local-dev`, `/data-engine-cli`, `/debugging-coolify`, `/five`, `/stitch-to-nextjs` | Internal maintainer slash commands, implemented by `.agents/` files that are not shipped in this public repo |
 

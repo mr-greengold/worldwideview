@@ -43,7 +43,8 @@ node_modules/
 # stray Windows redirect artifact
 /nul
 
-# planning (private repo: github.com/silvertakana/wwv-planning)
+# planning and internal maintainer material - kept in the private workspace repository,
+# never published from here. Do not point a shipped file at anything under it.
 .planning/
 
 # performance
@@ -103,9 +104,6 @@ next-env.d.ts
 
 # Plugin build artifacts
 packages/*/dist/
-
-# Reference Reference Codebases
-/worldmonitor/
 
 # Developmental scripts & temporary sandbox
 /local-scripts/
